@@ -1,0 +1,12 @@
+﻿using UnityEngine.UI;
+
+namespace {ScriptNameSpace}
+{
+    public sealed partial class {scriptName} : UIView
+    {
+        protected override void OnInit()
+        {
+            base.OnInit();
+        }
+    }
+}

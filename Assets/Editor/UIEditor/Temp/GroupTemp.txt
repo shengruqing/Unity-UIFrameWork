@@ -1,0 +1,39 @@
+﻿using UnityEngine.UI;
+
+namespace {ScriptNameSpace}
+{
+    public class {scriptName} : UIGroup
+    {
+    
+{component}
+        protected override void OnInit()
+        {
+            base.OnInit();
+{componentPath}
+{AddListener}
+        }
+		
+		/// <summary>
+        /// 当显示时回调。
+        /// </summary>
+        protected override void OnShow()
+        {
+        }
+        
+{ListenerMethod}
+		/// <summary>
+        /// 当隐藏时回调。
+        /// </summary>
+        protected override void OnHide()
+        {
+        }
+
+        /// <summary>
+        /// 当删除时调用。
+        /// </summary>
+        protected override void OnDestroy()
+        {
+        }
+		
+    }
+}

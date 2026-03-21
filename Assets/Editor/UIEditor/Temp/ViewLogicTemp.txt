@@ -1,0 +1,36 @@
+﻿using UnityEngine;
+
+namespace {ScriptNameSpace}
+{
+    [UIAttribute(ViewLayer.Layer1, ViewStack.FullOnly)]
+    public class {scriptName}Logic : UIViewLogic<{scriptName}>
+    {
+        protected override void OnInit()
+        {
+            base.OnInit();
+{AddListener}
+        }
+
+        protected override void OnShow()
+        {
+            base.OnShow();
+        }
+        
+{ListenerMethod}
+
+        public override void RegisterEvent()
+        {
+            base.RegisterEvent();
+        }
+
+        protected override void OnHide()
+        {
+            base.OnHide();
+        }
+
+        protected override void OnDestroy()
+        {
+            base.OnDestroy();
+        }
+    }
+}

@@ -1,0 +1,107 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e339c7c46a7f4db9addb56580ead8f13, type: 3}
+  m_Name: ScriptGeneratorSetting
+  m_EditorClassIdentifier: 
+  useBindComponent: 1
+  genCodePath: /Scripts/GameLogic/UI/UIView/Logic
+  impCodePath: /Scripts/GameLogic/UI/UIView/View
+  autoGenerateCodePath: /Scripts/GameLogic/UI/UIView/Gen
+  groupCodePath: /Scripts/GameLogic/UI/UIView/UIGroup
+  _namespace: GameLogic
+  _groupName: UIGroup
+  uiGenTypes:
+  - uiTypeName: UIView
+    isGeneric: 0
+  - uiTypeName: UIGroup
+    isGeneric: 0
+  scriptGenerateRule:
+  - uiElementRegex: go_
+    componentName: 0
+    componentType: GameObject
+    isUIGroup: 0
+  - uiElementRegex: tf_
+    componentName: 1
+    componentType: Transform
+    isUIGroup: 0
+  - uiElementRegex: rect_
+    componentName: 2
+    componentType: RectTransform
+    isUIGroup: 0
+  - uiElementRegex: text_
+    componentName: 3
+    componentType: Text
+    isUIGroup: 0
+  - uiElementRegex: richText_
+    componentName: 4
+    componentType: RichTextItem
+    isUIGroup: 0
+  - uiElementRegex: btn_
+    componentName: 5
+    componentType: Button
+    isUIGroup: 0
+  - uiElementRegex: img_
+    componentName: 6
+    componentType: Image
+    isUIGroup: 0
+  - uiElementRegex: rimg_
+    componentName: 7
+    componentType: RawImage
+    isUIGroup: 0
+  - uiElementRegex: scrollBar_
+    componentName: 9
+    componentType: Scrollbar
+    isUIGroup: 0
+  - uiElementRegex: scroll_
+    componentName: 8
+    componentType: ScrollRect
+    isUIGroup: 0
+  - uiElementRegex: input_
+    componentName: 10
+    componentType: InputField
+    isUIGroup: 0
+  - uiElementRegex: grid_
+    componentName: 11
+    componentType: GridLayoutGroup
+    isUIGroup: 0
+  - uiElementRegex: hlay_
+    componentName: 12
+    componentType: HorizontalLayoutGroup
+    isUIGroup: 0
+  - uiElementRegex: vlay_
+    componentName: 13
+    componentType: VerticalLayoutGroup
+    isUIGroup: 0
+  - uiElementRegex: slider_
+    componentName: 14
+    componentType: Slider
+    isUIGroup: 0
+  - uiElementRegex: group_
+    componentName: 16
+    componentType: ToggleGroup
+    isUIGroup: 0
+  - uiElementRegex: curve_
+    componentName: 17
+    componentType: AnimationCurve
+    isUIGroup: 0
+  - uiElementRegex: canvasGroup_
+    componentName: 18
+    componentType: CanvasGroup
+    isUIGroup: 0
+  - uiElementRegex: lab_
+    componentName: 19
+    componentType: TextMeshProUGUI
+    isUIGroup: 0
+  - uiElementRegex: toggle_
+    componentName: 15
+    componentType: Toggle
+    isUIGroup: 0

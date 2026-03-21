@@ -1,0 +1,20 @@
+﻿using UnityEngine.UI;
+using UnityEngine;
+
+namespace {ScriptNameSpace}
+{
+    /// <summary>
+    /// 自动生成脚本请勿修改！！！！！如果需要新增组件获取，请在{scriptName}.cs中添加
+    /// </summary>
+    public partial class {scriptName} : UIView
+    {
+    
+{component}
+        
+        protected override void AutoInit()
+        {
+            base.AutoInit();
+{componentPath}
+        }
+    }
+}
