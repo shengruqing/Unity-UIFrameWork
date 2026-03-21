@@ -831,17 +831,274 @@ else
 
 ## 最佳实践
 
-### 1. 界面设计原则
+### 1. 界面设计原则 - View与Logic分层规范
 
-#### 单一职责
-- **View**: 只负责UI显示和用户交互
-- **Logic**: 只负责业务逻辑和数据处理
-- **不要**在View中编写业务逻辑
-- **不要**在Logic中直接操作UI组件
+#### 架构分层原则
+```
+┌─────────────────────────────────────────────────────────┐
+│                     GUIManager                           │
+│              (界面生命周期和堆栈管理)                     │
+└───────────────────────┬─────────────────────────────────┘
+                        │
+        ┌───────────────┴───────────────┐
+        │                               │
+┌───────▼────────┐           ┌──────────▼──────────┐
+│  UIViewLogic   │           │      UIView          │
+│  (业务逻辑层)   │           │   (UI显示层)        │
+│                 │           │                       │
+│ ✓ 业务逻辑处理   │           │ ✓ UI组件获取         │
+│ ✓ 数据处理       │           │ ✓ UI显示更新         │
+│ ✓ 事件管理       │           │ ✓ 用户交互事件转发    │
+│ ✓ 通过View公开方法│           │ ✓ 提供公开方法供     │
+│   操作UI         │           │   Logic调用          │
+│                 │           │                       │
+│ ✗ 直接操作UI组件 │           │ ✗ 编写业务逻辑       │
+└─────────────────┘           └───────────────────────┘
+```
 
-#### 事件驱动
+#### View层职责规范
+
+**View层应该做什么：**
+1. **组件获取**：在`OnInit()`中通过自动生成或手动查找获取所有UI组件
+2. **UI显示**：提供公开方法供Logic层调用，用于更新UI显示
+3. **事件绑定**：在`OnInit()`或`BindEvents()`中绑定UI交互事件
+4. **事件转发**：将UI交互事件转发给Logic层处理
+5. **UI适配**：处理刘海屏适配、分辨率调整等UI相关逻辑
+
+**View层代码示例：**
+```csharp
+public class LoginView : UIView
+{
+    // UI组件（通过自动生成或手动获取）
+    public Button btnLogin;
+    public InputField inputUsername;
+    public Text txtError;
+    
+    protected override void OnInit()
+    {
+        base.OnInit();
+        // 1. 获取UI组件（通过自动生成代码或手动查找）
+        // btnLogin = GetChildCompByObj<Button>("BtnLogin");
+        // inputUsername = GetChildCompByObj<InputField>("InputUsername");
+        // txtError = GetChildCompByObj<Text>("TxtError");
+        
+        // 2. 绑定UI交互事件
+        BindEvents();
+    }
+    
+    /// <summary>
+    /// 绑定UI交互事件
+    /// </summary>
+    private void BindEvents()
+    {
+        // 使用基类提供的方法绑定事件
+        SetButtonClick(btnLogin, OnLoginButtonClicked);
+    }
+    
+    /// <summary>
+    /// UI事件转发给Logic层
+    /// </summary>
+    private void OnLoginButtonClicked()
+    {
+        if (_Logic is LoginLogic logic)
+        {
+            logic.OnLoginButtonClicked();
+        }
+    }
+    
+    // ==================== 公开方法供Logic层调用 ====================
+    
+    /// <summary>
+    /// 设置错误提示文本
+    /// </summary>
+    public void SetErrorText(string message)
+    {
+        SetText(txtError, message);
+    }
+    
+    /// <summary>
+    /// 设置登录按钮交互状态
+    /// </summary>
+    public void SetLoginButtonInteractable(bool interactable)
+    {
+        SetButtonInteractable(btnLogin, interactable);
+    }
+    
+    /// <summary>
+    /// 获取用户名输入
+    /// </summary>
+    public string GetUsername()
+    {
+        return inputUsername?.text ?? string.Empty;
+    }
+}
+```
+
+**View层不应该做什么：**
+```csharp
+// ❌ 错误示例：在View中编写业务逻辑
+private void OnLoginButtonClicked()
+{
+    // 不要在这里写登录逻辑！
+    string username = inputUsername.text;
+    if (string.IsNullOrEmpty(username))
+    {
+        txtError.text = "用户名不能为空";
+        return;
+    }
+    // 发送网络请求...
+    // 这应该在Logic层处理！
+}
+```
+
+#### Logic层职责规范
+
+**Logic层应该做什么：**
+1. **业务逻辑**：处理所有业务逻辑，如登录、数据计算等
+2. **数据处理**：管理界面数据状态
+3. **事件管理**：注册和处理游戏事件
+4. **UI操作**：通过View层提供的公开方法来操作UI
+5. **生命周期**：管理界面的生命周期回调
+
+**Logic层代码示例：**
+```csharp
+[UIAttribute(ViewLayer.Layer1, ViewStack.FullOnly)]
+public class LoginLogic : UIViewLogic<LoginView>
+{
+    private bool isLoggingIn = false;
+    
+    protected override void OnInit()
+    {
+        base.OnInit();
+        // ✅ 正确：不要在这里直接访问View的UI组件
+        // ❌ 错误：不要写 View.btnLogin.onClick.AddListener(...)
+    }
+    
+    protected override void OnShow()
+    {
+        base.OnShow();
+        // ✅ 正确：通过View的公开方法操作UI
+        // View.SetErrorText(string.Empty);
+    }
+    
+    /// <summary>
+    /// 登录按钮点击 - 由View层调用
+    /// </summary>
+    public void OnLoginButtonClicked()
+    {
+        if (isLoggingIn) return;
+        
+        // ✅ 正确：通过View的公开方法获取数据
+        string username = View.GetUsername();
+        
+        if (string.IsNullOrEmpty(username))
+        {
+            // ✅ 正确：通过View的公开方法更新UI
+            View.SetErrorText("用户名不能为空");
+            return;
+        }
+        
+        // 业务逻辑处理
+        isLoggingIn = true;
+        View.SetLoginButtonInteractable(false);
+        View.SetErrorText("登录中...");
+        
+        // 发送登录事件或网络请求
+        SendEvent(this, new LoginRequestArgs(username));
+    }
+    
+    public override void RegisterEvent()
+    {
+        base.RegisterEvent();
+        AddListener(EventDefine.LoginSuccess, OnLoginSuccess);
+        AddListener(EventDefine.LoginFailed, OnLoginFailed);
+    }
+    
+    private void OnLoginSuccess(GameEventArgs args)
+    {
+        isLoggingIn = false;
+        View.SetLoginButtonInteractable(true);
+        Hide();
+        GUIManager.Instance.ShowView<MainLogic>();
+    }
+    
+    private void OnLoginFailed(GameEventArgs args)
+    {
+        isLoggingIn = false;
+        var errorArgs = args as LoginErrorArgs;
+        View.SetLoginButtonInteractable(true);
+        View.SetErrorText(errorArgs.ErrorMessage);
+    }
+}
+```
+
+**Logic层不应该做什么：**
+```csharp
+// ❌ 错误示例：直接操作UI组件
+protected override void OnInit()
+{
+    // 不要直接访问View的UI组件！
+    View.btnLogin.onClick.AddListener(OnLogin);
+    View.inputUsername.text = "default";
+}
+
+// ❌ 错误示例：直接设置UI组件属性
+private void UpdateUI()
+{
+    View.txtMessage.text = "Hello"; // 应该通过View.SetMessageText("Hello")
+    View.btnSubmit.interactable = true; // 应该通过View.SetSubmitInteractable(true)
+}
+```
+
+#### 事件驱动通信流程
+
+**UI交互事件流：**
+```
+用户点击按钮
+    ↓
+View.btnLogin.onClick (Unity事件)
+    ↓
+View.OnLoginButtonClicked() (View层处理)
+    ↓
+Logic.OnLoginButtonClicked() (转发给Logic层)
+    ↓
+执行业务逻辑
+    ↓
+View.SetErrorText() / View.SetButtonInteractable() (通过公开方法更新UI)
+```
+
+**业务数据更新UI流：**
+```
+业务数据变化
+    ↓
+Logic层检测到变化
+    ↓
+Logic调用View的公开方法
+    ↓
+View.UpdateSomeUI(data)
+    ↓
+UI显示更新
+```
+
+#### 单一职责原则检查清单
+
+**View层检查清单：**
+- [ ] 所有UI组件都在OnInit中获取
+- [ ] 所有UI交互事件都转发给Logic层
+- [ ] 提供了清晰的公开方法供Logic层调用
+- [ ] 没有编写任何业务逻辑代码
+- [ ] 没有直接访问游戏数据或网络请求
+
+**Logic层检查清单：**
+- [ ] 所有UI操作都通过View的公开方法进行
+- [ ] 没有直接访问View的UI组件（如View.btn、View.text）
+- [ ] 所有业务逻辑都在Logic层处理
+- [ ] 正确使用事件系统与其他模块通信
+- [ ] 在RegisterEvent中注册事件监听
+
+### 2. 事件驱动架构
 - 使用事件系统进行模块间通信
-- View → Logic: 通过方法调用或事件
+- View → Logic: 通过方法调用
 - Logic → View: 通过View的公共方法
 - Logic ↔ 其他模块: 通过事件系统
 
@@ -1274,11 +1531,3 @@ public class UIPerformanceMonitor : MonoBehaviour
 3. **验证资源**: 确认UI预制体路径正确
 4. **调试事件**: 使用事件监控工具检查事件流
 
-### 需要定制？
-系统设计为可扩展架构，支持：
-- 自定义加载策略（Addressables/YooAsset等）
-- 自定义动画系统
-- 自定义国际化支持
-- 自定义皮肤/主题系统
-
----
