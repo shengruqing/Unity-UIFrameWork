@@ -129,7 +129,7 @@ namespace GameLogic
             GameObject cloneObj = CloneTemplate(template);
             if (cloneObj == null)
             {
-                Debug.LogWarning("Warning: Clone group error.cloneObj is null");
+                Logger.Warning("Warning: Clone group error.cloneObj is null");
                 return;
             }
 
@@ -150,7 +150,7 @@ namespace GameLogic
             GameObject cloneObj = CloneTemplate(template);
             if (cloneObj == null)
             {
-                Debug.LogWarning("Warning: Clone group error.cloneObj is null");
+                Logger.Warning("Warning: Clone group error.cloneObj is null");
                 return;
             }
 

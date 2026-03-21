@@ -13,6 +13,11 @@ namespace GameLogic
     /// UI逻辑基类。
     /// 处理UI的业务逻辑、生命周期和事件管理。
     /// 所有自定义界面Logic都应继承此类。
+    /// 
+    /// 【架构规范】
+    /// - Logic层：负责业务逻辑、数据处理、通过View提供的公开方法操作UI
+    /// - 禁止：Logic层直接访问UI组件（如View.btn、View.text等）
+    /// - 推荐：通过View层提供的公开方法来操作UI
     /// </summary>
     public class UIViewLogic
     {

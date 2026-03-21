@@ -1,12 +1,19 @@
 using System;
 using UnityEngine;
+using UnityEngine.Events;
 using UnityEngine.UI;
 
 namespace GameLogic
 {
     /// <summary>
     /// 游戏界面View脚本。
-    /// 只处理组件获取和容器管理，不处理业务逻辑。
+    /// 只处理UI显示和用户交互，不处理业务逻辑。
+    /// 
+    /// 【架构规范】
+    /// - View层：负责UI组件的获取、显示、用户交互事件转发
+    /// - Logic层：负责业务逻辑、数据处理、通过View提供的公开方法操作UI
+    /// - 禁止：Logic层直接访问UI组件
+    /// - 禁止：View层编写业务逻辑代码
     /// </summary>
     public class UIView : ControlContainer
     {
@@ -135,7 +142,7 @@ namespace GameLogic
 
         #endregion
 
-        #region 公共方法
+        #region 公共方法 - UI基础操作
 
         /// <summary>
         /// 设置交互性。
@@ -165,6 +172,104 @@ namespace GameLogic
             if (gameObject != null)
             {
                 GameObject.Destroy(gameObject);
+            }
+        }
+
+        #endregion
+
+        #region 公共方法 - 常用UI组件操作
+
+        /// <summary>
+        /// 设置文本内容。
+        /// 【View层规范】此方法由Logic层调用，用于更新UI显示。
+        /// </summary>
+        /// <param name="text">Text组件。</param>
+        /// <param name="content">文本内容。</param>
+        protected void SetText(Text text, string content)
+        {
+            if (text != null)
+            {
+                text.text = content;
+            }
+        }
+
+        /// <summary>
+        /// 设置按钮点击事件。
+        /// 【View层规范】此方法由View自身在OnInit中调用，用于绑定UI交互事件。
+        /// </summary>
+        /// <param name="button">Button组件。</param>
+        /// <param name="callback">点击回调。</param>
+        protected void SetButtonClick(Button button, UnityAction callback)
+        {
+            if (button != null)
+            {
+                button.onClick.RemoveAllListeners();
+                button.onClick.AddListener(callback);
+            }
+        }
+
+        /// <summary>
+        /// 设置按钮交互状态。
+        /// </summary>
+        /// <param name="button">Button组件。</param>
+        /// <param name="interactable">是否可交互。</param>
+        protected void SetButtonInteractable(Button button, bool interactable)
+        {
+            if (button != null)
+            {
+                button.interactable = interactable;
+            }
+        }
+
+        /// <summary>
+        /// 设置图片精灵。
+        /// </summary>
+        /// <param name="image">Image组件。</param>
+        /// <param name="sprite">精灵对象。</param>
+        protected void SetImageSprite(Image image, Sprite sprite)
+        {
+            if (image != null)
+            {
+                image.sprite = sprite;
+            }
+        }
+
+        /// <summary>
+        /// 设置图片颜色。
+        /// </summary>
+        /// <param name="image">Image组件。</param>
+        /// <param name="color">颜色。</param>
+        protected void SetImageColor(Image image, Color color)
+        {
+            if (image != null)
+            {
+                image.color = color;
+            }
+        }
+
+        /// <summary>
+        /// 设置滑动条值。
+        /// </summary>
+        /// <param name="slider">Slider组件。</param>
+        /// <param name="value">值。</param>
+        protected void SetSliderValue(Slider slider, float value)
+        {
+            if (slider != null)
+            {
+                slider.value = value;
+            }
+        }
+
+        /// <summary>
+        /// 设置GameObject激活状态。
+        /// </summary>
+        /// <param name="targetObj">目标GameObject。</param>
+        /// <param name="active">是否激活。</param>
+        protected void SetGameObjectActive(GameObject targetObj, bool active)
+        {
+            if (targetObj != null)
+            {
+                targetObj.SetActive(active);
             }
         }
 
