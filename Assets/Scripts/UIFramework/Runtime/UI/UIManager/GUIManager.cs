@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Threading;
 using UnityEngine;
 
 namespace GameLogic
@@ -15,28 +14,12 @@ namespace GameLogic
     {
         #region 单例
 
-        private static GUIManager _instance;
-        private static readonly object _lock = new object();
+        private static readonly Lazy<GUIManager> _instance = new Lazy<GUIManager>(() => new GUIManager());
 
         /// <summary>
         /// 获取GUIManager单例实例。
         /// </summary>
-        public static GUIManager Instance
-        {
-            get
-            {
-                if (_instance == null)
-                {
-                    lock (_lock)
-                    {
-                        if (_instance == null)
-                            _instance = new GUIManager();
-                    }
-                }
-
-                return _instance;
-            }
-        }
+        public static GUIManager Instance => _instance.Value;
 
         #endregion
 
@@ -68,26 +51,28 @@ namespace GameLogic
         private Dictionary<string, UIView> viewObjects = new Dictionary<string, UIView>();
 
         /// <summary>
-        /// 记录当前所显示的Logic。
+        /// 需要更新的界面Logic集合（HashSet保证O(1)查找）。
         /// </summary>
-        private UIViewLogic currentView = null;
+        private readonly HashSet<UIViewLogic> _updateSet = new HashSet<UIViewLogic>();
 
         /// <summary>
-        /// 需要更新的界面Logic列表。
+        /// 更新迭代快照缓冲，避免迭代期间集合被修改。
         /// </summary>
-        private readonly List<UIViewLogic> _updateList = new List<UIViewLogic>();
+        private readonly List<UIViewLogic> _updateBuffer = new List<UIViewLogic>();
 
-        /// <summary>
-        /// 更新列表的线程锁。
-        /// </summary>
-        private readonly object _updateListLock = new object();
-
-        /// <summary>
-        /// 更新操作的取消令牌源。
-        /// </summary>
-        private CancellationTokenSource _updateCts = new CancellationTokenSource();
-        
         public ScreenOrientation curOrientation = Screen.orientation; // 当前屏幕方向
+
+        /// <summary>
+        /// 性能统计信息
+        /// </summary>
+        private readonly Dictionary<string, long> _performanceStats = new Dictionary<string, long>();
+
+        /// <summary>
+        /// 界面创建计数器
+        /// </summary>
+        private int _viewCreateCount = 0;
+
+        public bool canResponseShowExitGame = true;
 
         /// <summary>
         /// 从 Logic 类型获取界面名称（去掉 Logic 后缀）。
@@ -99,9 +84,10 @@ namespace GameLogic
             {
                 viewName = viewName.Substring(0, viewName.Length - 5);
             }
+
             return viewName;
         }
-        
+
         #endregion
 
         #region 创建实例
@@ -113,46 +99,48 @@ namespace GameLogic
         /// <returns>创建的UIView实例，如果失败返回UIView基类。</returns>
         private UIView CreateViewInstance(string viewName)
         {
-            //Logger.Log($"创建View对象实例: {viewName}");
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
-            // 使用类型缓存管理器查找类型
-            var type = TypeCacheManager.FindViewType(viewName);
-
-            if (type != null)
+            try
             {
-                try
+                //Logger.Log($"创建View对象实例: {viewName}");
+
+                // 使用类型缓存管理器查找类型
+                var type = TypeCacheManager.FindViewType(viewName);
+
+                if (type != null)
                 {
-                    var instance = (UIView)System.Activator.CreateInstance(type);
-                    //Logger.Log($"[CreateViewInstance] 成功创建View实例: {type.FullName}");
-                    return instance;
+                    try
+                    {
+                        var instance = (UIView)System.Activator.CreateInstance(type);
+                        _viewCreateCount++;
+                        stopwatch.Stop();
+                        RecordPerformance($"CreateViewInstance_{viewName}", stopwatch.ElapsedMilliseconds);
+                        //Logger.Log($"[CreateViewInstance] 成功创建View实例: {type.FullName}");
+                        return instance;
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error($"[CreateViewInstance] 创建View实例失败 {type.FullName}: {ex.Message}");
+                    }
                 }
-                catch (Exception ex)
+
+                // 如果都找不到，返回UIView基类
+                Logger.Warning($"[CreateViewInstance] 未找到具体View类 {viewName}，使用UIView基类");
+                return new UIView();
+            }
+            finally
+            {
+                if (stopwatch.IsRunning)
                 {
-                    Logger.Error($"[CreateViewInstance] 创建View实例失败 {type.FullName}: {ex.Message}");
+                    stopwatch.Stop();
                 }
             }
-
-            // 如果都找不到，返回UIView基类
-            Logger.Warning($"[CreateViewInstance] 未找到具体View类 {viewName}，使用UIView基类");
-            return new UIView();
         }
 
         #endregion
 
         #region 界面管理
-
-        /// <summary>
-        /// 获取界面Logic信息（泛型版本）。
-        /// </summary>
-        /// <typeparam name="T">界面Logic类型。</typeparam>
-        /// <returns>界面Logic实例，如果不存在返回null。</returns>
-        private T GetViewInfo<T>() where T : UIViewLogic
-        {
-            string viewName = GetViewNameFromLogicType(typeof(T));
-            viewList.TryGetValue(viewName, out UIViewLogic logic);
-            return logic as T;
-        }
-
 
         private UIViewLogic CreateInstance(Type type)
         {
@@ -164,7 +152,8 @@ namespace GameLogic
 
             if (attribute != null)
             {
-                view.Init(attribute.Layer, attribute.CurStackMode, attribute.NeedUpdate, attribute.IsNoNotch, attribute.IsUseAdjust);
+                view.Init(attribute.Layer, attribute.CurStackMode, attribute.NeedUpdate,
+                    attribute.IsNoNotch, attribute.IsUseAdjust);
             }
             else
             {
@@ -172,37 +161,6 @@ namespace GameLogic
             }
 
             return view;
-        }
-
-        /// <summary>
-        /// 获取或者创建Logic（字符串版本）。
-        /// 注意：viewName 需为程序集限定类型名，否则 Type.GetType 可能返回 null。
-        /// </summary>
-        /// <param name="viewName">界面名称。</param>
-        /// <returns>UIViewLogic实例，失败返回 null。</returns>
-        private UIViewLogic GetAndCreateView(string viewName)
-        {
-            if (viewList.TryGetValue(viewName, out UIViewLogic logic))
-            {
-                return logic;
-            }
-
-            Type type = System.Type.GetType(viewName);
-            if (type == null)
-            {
-                Logger.Warning($"[GUIManager] GetAndCreateView: 未找到类型 {viewName}，请使用 viewList 获取已存在的界面。");
-                return null;
-            }
-
-            try
-            {
-                return CreateInstance(type);
-            }
-            catch (Exception ex)
-            {
-                Logger.Error($"[GUIManager] GetAndCreateView 创建实例失败 {viewName}: {ex.Message}");
-                return null;
-            }
         }
 
         /// <summary>
@@ -251,38 +209,6 @@ namespace GameLogic
         }
 
         /// <summary>
-        /// 隐藏所有叠加层界面。
-        /// </summary>
-        private void HideAllOverLay()
-        {
-            foreach (var kvp in viewList)
-            {
-                UIViewLogic logic = kvp.Value;
-                if (logic == null || !logic.IsVisible()) continue;
-                if (logic.CurStackMode == ViewStack.OverLay)
-                {
-                    logic.Hide();
-                }
-            }
-        }
-
-        /// <summary>
-        /// 隐藏所有层级大于Bottom的界面。
-        /// </summary>
-        private void HideAllLayer()
-        {
-            foreach (var kvp in viewList)
-            {
-                UIViewLogic logic = kvp.Value;
-                if (logic == null || !logic.IsVisible()) continue;
-                if (logic.Layer > ViewLayer.Bottom)
-                {
-                    logic.Hide();
-                }
-            }
-        }
-
-        /// <summary>
         /// 获取界面在顺序堆栈中的索引。
         /// </summary>
         /// <param name="logic">界面Logic实例。</param>
@@ -301,39 +227,54 @@ namespace GameLogic
         /// </summary>
         private void EscapeCurView()
         {
-            if (Application.platform == RuntimePlatform.IPhonePlayer) // GameUtil.UNITY_IOS()
+            // iOS平台不支持ESC键返回
+            if (Application.platform == RuntimePlatform.IPhonePlayer)
             {
                 return;
             }
 
+            // 没有界面在堆栈中
             if (orderViewStack.Count == 0)
             {
                 return;
             }
 
+            // 从顶部开始处理返回事件
             while (orderViewStack.Count > 0)
             {
-                UIViewLogic logic = orderViewStack[orderViewStack.Count - 1];
-                if (logic != null && logic.IsVisible())
+                var topIndex = orderViewStack.Count - 1;
+                UIViewLogic logic = orderViewStack[topIndex];
+
+                // 移除无效或不可见的界面
+                if (logic == null || !logic.IsVisible())
                 {
-                    var escape = logic.OnEscape();
-                    if (escape == ViewEscape.Hide)
-                    {
-                        orderViewStack.RemoveAt(orderViewStack.Count - 1);
-                        break;
-                    }
-                    else if (escape == ViewEscape.Ignore)
-                    {
-                        orderViewStack.RemoveAt(orderViewStack.Count - 1);
-                    }
-                    else
-                    {
-                        break;
-                    }
+                    orderViewStack.RemoveAt(topIndex);
+                    continue;
                 }
-                else
+
+                // 处理返回事件
+                var escapeResult = logic.OnEscape();
+
+                switch (escapeResult)
                 {
-                    orderViewStack.RemoveAt(orderViewStack.Count - 1);
+                    case ViewEscape.Hide:
+                        // 隐藏当前界面并停止传递
+                        orderViewStack.RemoveAt(topIndex);
+                        return;
+
+                    case ViewEscape.Ignore:
+                        // 忽略当前界面，继续处理下一个
+                        orderViewStack.RemoveAt(topIndex);
+                        break;
+
+                    case ViewEscape.Wait:
+                        // 等待状态，停止处理
+                        return;
+
+                    default:
+                        // 未知状态，停止处理
+                        Logger.Warning($"未知返回状态: {escapeResult}");
+                        return;
                 }
             }
         }
@@ -349,23 +290,14 @@ namespace GameLogic
         {
             try
             {
-                lock (_updateListLock)
+                _updateBuffer.Clear();
+                _updateBuffer.AddRange(_updateSet);
+                foreach (var logic in _updateBuffer)
                 {
-                    for (int i = _updateList.Count - 1; i >= 0; i--)
-                    {
-                        if (i >= _updateList.Count) continue; // 双重检查防止越界
-
-                        UIViewLogic logic = _updateList[i];
-                        if (logic != null && logic.IsVisible())
-                        {
-                            logic.Update();
-                        }
-                        else
-                        {
-                            // 如果logic不可见或为空，移除它
-                            _updateList.RemoveAt(i);
-                        }
-                    }
+                    if (logic != null && logic.IsVisible())
+                        logic.Update();
+                    else
+                        _updateSet.Remove(logic);
                 }
             }
             catch (Exception ex)
@@ -382,18 +314,12 @@ namespace GameLogic
         {
             try
             {
-                lock (_updateListLock)
+                _updateBuffer.Clear();
+                _updateBuffer.AddRange(_updateSet);
+                foreach (var logic in _updateBuffer)
                 {
-                    for (int i = _updateList.Count - 1; i >= 0; i--)
-                    {
-                        if (i >= _updateList.Count) continue; // 双重检查防止越界
-
-                        UIViewLogic logic = _updateList[i];
-                        if (logic != null && logic.IsVisible())
-                        {
-                            logic.UpdateLogic(delta);
-                        }
-                    }
+                    if (logic != null && logic.IsVisible())
+                        logic.UpdateLogic(delta);
                 }
             }
             catch (Exception ex)
@@ -432,7 +358,7 @@ namespace GameLogic
         public void ShowView<T>(params object[] args) where T : UIViewLogic
         {
             string viewName = GetViewNameFromLogicType(typeof(T));
-
+            Debug.Log("开始加载界面：" + viewName);
             if (_loadingCache.ContainsKey(viewName))
             {
                 Logger.Warning($"GUIManager.ShowView: {viewName} 正在加载中，请勿重复调用！");
@@ -445,6 +371,7 @@ namespace GameLogic
                 {
                     logic.Show(args);
                 }
+
                 logic.RegisterEvent();
             }
             else
@@ -460,7 +387,7 @@ namespace GameLogic
                 _loadingCache.Add(viewName, logic);
                 // 必须在 LoadUIView 之前注册事件，否则同步/快速加载时 OnViewPrepare 可能在 RegisterEvent 之前执行，导致 _cachedEventMessages 为空
                 logic.RegisterEvent();
-                logic.LoadUIView(viewName, OnViewPrepare, args);
+                logic.LoadUIViewAsync(viewName, OnViewPrepare, args);
             }
         }
 
@@ -501,10 +428,17 @@ namespace GameLogic
             }
 
             // 总是清理加载缓存，无论成功还是失败
-            if (_loadingCache.ContainsKey(uiViewLogic.Name))
-            {
-                _loadingCache.Remove(uiViewLogic.Name);
-            }
+            _loadingCache.Remove(uiViewLogic.Name);
+        }
+
+        /// <summary>
+        /// 是否正在加载界面
+        /// </summary>
+        /// <returns>是否正在加载界面</returns>
+        public bool IsLoadingCache<T>()
+        {
+            string viewName = GetViewNameFromLogicType(typeof(T));
+            return _loadingCache.ContainsKey(viewName);
         }
 
         /// <summary>
@@ -531,6 +465,8 @@ namespace GameLogic
             {
                 logic.Hide();
             }
+
+            Logger.Log("隐藏界面：" + viewName);
         }
 
         /// <summary>
@@ -544,7 +480,7 @@ namespace GameLogic
             for (int i = 0; i < orderViewStack.Count; i++)
             {
                 var view = orderViewStack[i];
-                if (view != null && !view.IsLoadDone)
+                if (view is { IsLoadDone: false })
                     return true;
             }
 
@@ -663,7 +599,13 @@ namespace GameLogic
         /// </summary>
         public void HideAllOverLayView()
         {
-            HideAllOverLay();
+            foreach (var kvp in viewList)
+            {
+                UIViewLogic logic = kvp.Value;
+                if (logic == null || !logic.IsVisible()) continue;
+                if (logic.CurStackMode == ViewStack.OverLay)
+                    logic.Hide();
+            }
         }
 
         /// <summary>
@@ -671,7 +613,13 @@ namespace GameLogic
         /// </summary>
         public void HideAllLayerMoreThanZero()
         {
-            HideAllLayer();
+            foreach (var kvp in viewList)
+            {
+                UIViewLogic logic = kvp.Value;
+                if (logic == null || !logic.IsVisible()) continue;
+                if (logic.Layer > ViewLayer.Bottom)
+                    logic.Hide();
+            }
         }
 
         /// <summary>
@@ -681,53 +629,57 @@ namespace GameLogic
         {
             try
             {
-                // 取消所有正在进行的操作
-                _updateCts?.Cancel();
-                _updateCts?.Dispose();
-                _updateCts = new CancellationTokenSource();
-                
-                lock (_updateListLock)
+                foreach (var kvp in viewList)
                 {
-                    // 先隐藏所有界面
-                    foreach (var kvp in viewList)
+                    UIViewLogic logic = kvp.Value;
+                    if (logic == null) continue;
+                    try
                     {
-                        UIViewLogic logic = kvp.Value;
-                        if (logic == null) continue;
-                        try
-                        {
-                            logic.ActiveHide(false);
-                            logic.Destroy();
-                        }
-                        catch (Exception ex)
-                        {
-                            Logger.Error($"销毁界面 {kvp.Key} 时出错: {ex.Message}");
-                        }
+                        logic.ActiveHide(false);
+                        logic.Destroy();
                     }
-
-                    // 销毁所有View对象
-                    foreach (var kvp in viewObjects)
+                    catch (Exception ex)
                     {
-                        UIView view = kvp.Value;
-                        try
-                        {
-                            view?.DestroyGameObject();
-                        }
-                        catch (Exception ex)
-                        {
-                            Logger.Error($"销毁View对象 {kvp.Key} 时出错: {ex.Message}");
-                        }
+                        Logger.Error($"销毁界面 {kvp.Key} 时出错: {ex.Message}");
                     }
-
-                    // 清空所有集合
-                    uiStack.Clear();
-                    _updateList.Clear();
-                    orderViewStack.Clear();
-                    viewList.Clear();
-                    viewObjects.Clear();
-                    _loadingCache.Clear();
-                    currentView = null;
                 }
-                
+
+                foreach (var kvp in viewObjects)
+                {
+                    UIView view = kvp.Value;
+                    try
+                    {
+                        view?.DestroyGameObject();
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error($"销毁View对象 {kvp.Key} 时出错: {ex.Message}");
+                    }
+                }
+
+                foreach (var kvp in _loadingCache)
+                {
+                    UIViewLogic logic = kvp.Value;
+                    if (logic == null) continue;
+                    try
+                    {
+                        logic.ActiveHide(false);
+                        logic.Destroy();
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error($"销毁界面 {kvp.Key} 时出错: {ex.Message}");
+                    }
+                }
+
+                uiStack.Clear();
+                _updateSet.Clear();
+                _updateBuffer.Clear();
+                orderViewStack.Clear();
+                viewList.Clear();
+                viewObjects.Clear();
+                _loadingCache.Clear();
+
                 Logger.Log("GUIManager: 所有界面已销毁");
             }
             catch (Exception ex)
@@ -757,11 +709,11 @@ namespace GameLogic
         }
 
         /// <summary>
-        /// 获取所有界面的只读副本（用于调试或遍历）。
+        /// 获取所有界面的只读视图（用于调试或遍历）。
         /// </summary>
         public IReadOnlyDictionary<string, UIViewLogic> GetAllViews()
         {
-            return new Dictionary<string, UIViewLogic>(viewList);
+            return viewList;
         }
 
         /// <summary>
@@ -775,7 +727,6 @@ namespace GameLogic
                 return;
             }
 
-            currentView = logic;
             if (logic != null && GetOrderStackIndex(logic) == -1)
             {
                 orderViewStack.Add(logic);
@@ -788,18 +739,47 @@ namespace GameLogic
         /// <param name="logic">界面Logic实例。</param>
         public void PopOrderStack(UIViewLogic logic)
         {
-            if (orderViewStack.Contains(logic))
-            {
-                orderViewStack.Remove(logic);
-            }
+            orderViewStack.Remove(logic);
         }
 
         /// <summary>
         /// 显示退出游戏确认界面。
         /// </summary>
-        public static void ShowExitGame()
+        public void ShowExitGame()
         {
-            // Show Exit Game Logic
+            if (canResponseShowExitGame)
+            {
+            }
+        }
+
+        /// <summary>
+        /// 释放UI
+        /// </summary>
+        public void Release()
+        {
+            Debug.Log("info: release ui manager");
+            uiStack.Clear();
+            DestroyAllView();
+        }
+
+        /// <summary>
+        /// 卸载无用界面
+        /// </summary>
+        public void UnloadUnusedView()
+        {
+            List<UIViewLogic> unloadViewKeys = new List<UIViewLogic>();
+            foreach (var view in viewList.Values)
+            {
+                if (view != null && !view.IsVisible() && view.CanUnload)
+                {
+                    unloadViewKeys.Add(view);
+                }
+            }
+
+            for (int i = unloadViewKeys.Count - 1; i >= 0; i--)
+            {
+                DestroyView(unloadViewKeys[i].Name);
+            }
         }
 
         /// <summary>
@@ -832,14 +812,7 @@ namespace GameLogic
         public void RegisterUpdateView(UIViewLogic logic)
         {
             if (logic == null || !logic.CanUpdate()) return;
-
-            lock (_updateListLock)
-            {
-                if (!_updateList.Contains(logic))
-                {
-                    _updateList.Add(logic);
-                }
-            }
+            _updateSet.Add(logic);
         }
 
         /// <summary>
@@ -849,13 +822,51 @@ namespace GameLogic
         public void UnregisterUpdateView(UIViewLogic logic)
         {
             if (logic == null) return;
+            _updateSet.Remove(logic);
+        }
 
-            lock (_updateListLock)
-            {
-                _updateList.Remove(logic);
-            }
+        /// <summary>
+        /// 记录性能统计信息
+        /// </summary>
+        /// <param name="operation">操作名称</param>
+        /// <param name="duration">耗时（毫秒）</param>
+        public void RecordPerformance(string operation, long duration)
+        {
+            _performanceStats[operation] = duration;
+        }
+
+        /// <summary>
+        /// 获取性能统计信息
+        /// </summary>
+        /// <returns>性能统计字典</returns>
+        public Dictionary<string, long> GetPerformanceStats()
+        {
+            return new Dictionary<string, long>(_performanceStats);
+        }
+
+        /// <summary>
+        /// 获取界面创建统计
+        /// </summary>
+        /// <returns>界面创建计数</returns>
+        public int GetViewCreateCount()
+        {
+            return _viewCreateCount;
+        }
+
+        /// <summary>
+        /// 重置性能统计
+        /// </summary>
+        public void ResetPerformanceStats()
+        {
+            _performanceStats.Clear();
+            _viewCreateCount = 0;
         }
 
         #endregion
+
+        public void SetCanResponseShowExitGame(bool b)
+        {
+            canResponseShowExitGame = b;
+        }
     }
 }

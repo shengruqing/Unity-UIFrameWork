@@ -95,5 +95,21 @@ namespace GameLogic
                 }
             }
         }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="args"></param>
+        /// <typeparam name="T"></typeparam>
+        public void SendToOpenViewWithArgs<T>(GameEventArgs args) where T : UIViewLogic
+        {
+            if ((GUIManager.Instance.GetView<T>() == null || !GUIManager.Instance.IsViewVisible<T>()) 
+                && !GUIManager.Instance.IsLoadingCache<T>())
+            {
+                GUIManager.Instance.ShowView<T>();
+            }
+
+            Send(args);
+        }
     }
 }
