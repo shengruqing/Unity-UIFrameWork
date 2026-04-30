@@ -62,16 +62,16 @@ namespace GameLogic
 #### 步骤4: 显示界面
 ```csharp
 // 在任何地方调用
-GUIManager.Instance.ShowView<QuickStartLogic>();
+GUIManager.Instance.ShowView<QuickStart>();
 ```
 
 #### 步骤5: 隐藏界面
 ```csharp
 // 隐藏界面
-GUIManager.Instance.HideView<QuickStartLogic>();
+GUIManager.Instance.HideView<QuickStart>();
 
 // 或者直接调用Logic的Hide方法
-var logic = GUIManager.Instance.GetView<QuickStartLogic>();
+var logic = GUIManager.Instance.GetView<QuickStart>();
 if (logic != null) logic.Hide();
 ```
 
@@ -523,10 +523,10 @@ public class EnemyHUDView : UIView
 #### 显示界面
 ```csharp
 // 无参数显示
-GUIManager.Instance.ShowView<LoginLogic>();
+GUIManager.Instance.ShowView<Login>();
 
 // 带参数显示
-GUIManager.Instance.ShowView<LoginLogic>("defaultUser");
+GUIManager.Instance.ShowView<Login>("defaultUser");
 
 // 显示弹窗（叠加模式）
 [UIAttribute(ViewLayer.Pop, ViewStack.OverLay)]
@@ -534,21 +534,21 @@ public class MessageBoxLogic : UIViewLogic<MessageBoxView>
 {
     // ...
 }
-GUIManager.Instance.ShowView<MessageBoxLogic>("确认要退出吗？");
+GUIManager.Instance.ShowView<MessageBox>("确认要退出吗？");
 ```
 
 #### 隐藏界面
 ```csharp
 // 隐藏指定界面
-GUIManager.Instance.HideView<LoginLogic>();
+GUIManager.Instance.HideView<Login>();
 
 // 判断界面是否可见
-bool isVisible = GUIManager.Instance.IsViewVisible<LoginLogic>();
+bool isVisible = GUIManager.Instance.IsViewVisible<Login>();
 ```
 
 #### 获取界面实例
 ```csharp
-LoginLogic loginLogic = GUIManager.Instance.GetView<LoginLogic>();
+LoginLogic loginLogic = GUIManager.Instance.GetView<Login>();
 if (loginLogic != null)
 {
     // 调用Logic方法
@@ -559,7 +559,7 @@ if (loginLogic != null)
 #### 销毁界面
 ```csharp
 // 销毁单个界面
-GUIManager.Instance.DestroyView<LoginLogic>();
+GUIManager.Instance.DestroyView<Login>();
 
 // 销毁所有界面（切换场景时使用）
 GUIManager.Instance.DestroyAllView();
