@@ -17,6 +17,9 @@ namespace GameLogic
         private static readonly HashSet<string> _searchedAssemblies = new();
         private static readonly object _lock = new object();
 
+        private static readonly List<string> _commonViewPrefixes = new List<string>
+            { "GameLogic.", "UI.", "Views.", "UIGroup." };
+
         /// <summary>
         /// 查找View类型（带缓存）。
         /// </summary>
@@ -43,7 +46,7 @@ namespace GameLogic
 
                 // 执行查找
                 var foundType = SearchForViewType(viewName);
-                
+
                 if (foundType != null)
                 {
                     _typeCache.TryAdd(viewName, foundType);
@@ -66,7 +69,7 @@ namespace GameLogic
         {
             // 获取当前程序集
             var currentAssembly = typeof(TypeCacheManager).Assembly;
-            
+
             // 1. 在当前程序集中查找
             var type = currentAssembly.GetType(viewName);
             if (IsValidViewType(type))
@@ -75,11 +78,14 @@ namespace GameLogic
             }
 
             // 2. 尝试带命名空间的查找
-            string fullName = "GameLogic." + viewName;
-            type = currentAssembly.GetType(fullName);
-            if (IsValidViewType(type))
+            foreach (var prefix in _commonViewPrefixes)
             {
-                return type;
+                string fullName = prefix + viewName;
+                type = currentAssembly.GetType(fullName);
+                if (IsValidViewType(type))
+                {
+                    return type;
+                }
             }
 
             // 3. 在已缓存的程序集中查找
@@ -91,10 +97,14 @@ namespace GameLogic
                     return type;
                 }
 
-                type = assemblyEntry.Value.GetType(fullName);
-                if (IsValidViewType(type))
+                foreach (var prefix in _commonViewPrefixes)
                 {
-                    return type;
+                    string fullName = prefix + viewName;
+                    type = assemblyEntry.Value.GetType(fullName);
+                    if (IsValidViewType(type))
+                    {
+                        return type;
+                    }
                 }
             }
 
@@ -120,12 +130,17 @@ namespace GameLogic
                         return type;
                     }
 
-                    type = assembly.GetType(fullName);
-                    if (IsValidViewType(type))
+                    foreach (var prefix in _commonViewPrefixes)
                     {
-                        return type;
+                        string fullName = prefix + viewName;
+                        type = assembly.GetType(fullName);
+                        if (IsValidViewType(type))
+                        {
+                            return type;
+                        }
                     }
                 }
+
                 _searchedAssemblies.Add("ALL_ASSEMBLIES");
             }
 
@@ -139,8 +154,9 @@ namespace GameLogic
         /// <returns>是否为有效View类型。</returns>
         private static bool IsValidViewType(Type type)
         {
-            return type != null && 
-                   typeof(UIView).IsAssignableFrom(type) && 
+            return type != null &&
+                   (typeof(UIView).IsAssignableFrom(type) || typeof(UIGroup).IsAssignableFrom(type) ||
+                    typeof(UIViewLogic).IsAssignableFrom(type)) &&
                    !type.IsAbstract &&
                    !type.IsInterface;
         }
@@ -153,8 +169,8 @@ namespace GameLogic
         private static bool IsSystemAssembly(Assembly assembly)
         {
             var name = assembly.GetName().Name;
-            return name.StartsWith("System") || 
-                   name.StartsWith("Microsoft") || 
+            return name.StartsWith("System") ||
+                   name.StartsWith("Microsoft") ||
                    name.StartsWith("Unity") ||
                    name.StartsWith("mscorlib") ||
                    name.StartsWith("netstandard");
@@ -167,7 +183,7 @@ namespace GameLogic
         public static void PreloadTypes(string[] typeNames)
         {
             if (typeNames == null) return;
-            
+
             foreach (var typeName in typeNames)
             {
                 if (!string.IsNullOrEmpty(typeName))
@@ -198,6 +214,28 @@ namespace GameLogic
         public static string GetCacheStats()
         {
             return $"类型缓存: {_typeCache.Count} 个, 程序集缓存: {_assemblyCache.Count} 个";
+        }
+
+        /// <summary>
+        /// 批量查找多个类型。
+        /// </summary>
+        /// <param name="viewNames">View名称数组。</param>
+        /// <returns>找到的类型字典。</returns>
+        public static Dictionary<string, Type> FindViewTypes(string[] viewNames)
+        {
+            var results = new Dictionary<string, Type>();
+            if (viewNames == null) return results;
+
+            foreach (var viewName in viewNames)
+            {
+                var type = FindViewType(viewName);
+                if (type != null)
+                {
+                    results[viewName] = type;
+                }
+            }
+
+            return results;
         }
     }
 }

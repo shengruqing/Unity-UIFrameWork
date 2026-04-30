@@ -10,7 +10,7 @@ public class Test : MonoBehaviour
     void Start()
     {
         // 然后显示TestView
-        GUIManager.Instance.ShowView<TestViewLogic>();
+        GUIManager.Instance.ShowView<TestView>();
         LogicEventDispatcher.Instance.Send(new DropBomb(100));
     }
 

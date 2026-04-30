@@ -13,7 +13,6 @@ namespace GameLogic
     /// UI逻辑基类。
     /// 处理UI的业务逻辑、生命周期和事件管理。
     /// 所有自定义界面Logic都应继承此类。
-    /// 
     /// </summary>
     public class UIViewLogic
     {
@@ -44,10 +43,14 @@ namespace GameLogic
         /// </summary>
         public bool NeedUpdate = false;
 
+        /// <summary>
         /// 是否不关心刘海屏的安全区域。
+        /// </summary>
         public bool IsNoNotch = false;
 
+        /// <summary>
         /// 是否使用双边刘海的适配方式。
+        /// </summary>
         public bool IsUseAdjust = false;
 
         /// <summary>
@@ -56,7 +59,7 @@ namespace GameLogic
         protected bool _Visible;
 
         /// <summary>
-        /// 能否卸载，表示随时可以直接删除
+        /// 能否卸载，表示随时可以直接删除。
         /// </summary>
         public bool CanUnload = false;
 
@@ -76,7 +79,7 @@ namespace GameLogic
         private System.Action<UIViewLogic, GameObject> _prepareCallback;
 
         /// <summary>
-        /// 用于取消异步加载的令牌源（Destroy 时取消）。
+        /// 用于取消异步加载的令牌源（Destroy时取消）。
         /// </summary>
         private CancellationTokenSource _loadCts;
 
@@ -202,41 +205,15 @@ namespace GameLogic
             _Visible = false;
             IsDestroyed = true;
 
-            // 清理事件系统
             RemoveAllUIEvent();
-            // 安全地取消和释放加载令牌
-            if (_loadCts != null)
-            {
-                try
-                {
-                    if (!_loadCts.IsCancellationRequested)
-                    {
-                        _loadCts.Cancel();
-                    }
 
-                    _loadCts.Dispose();
-                }
-                catch (ObjectDisposedException)
-                {
-                    // 令牌已被释放，忽略
-                }
-                catch (Exception ex)
-                {
-                    Logger.Warning($"[{Name}] 取消加载令牌时发生异常: {ex.Message}");
-                }
-                finally
-                {
-                    _loadCts = null;
-                }
-            }
+            DisposeLoadCancellationToken();
 
-            // 清空回调函数
             _prepareCallback = null;
 
             ClearEventQueue();
             _cachedEventMessages.Clear();
 
-            // 清理用户数据
             userDatas = null;
 
             OnDestroy();
@@ -357,7 +334,6 @@ namespace GameLogic
 
             if (IsAudio && isActive && Layer < ViewLayer.Pop)
             {
-                // PlayUISound(AudioDefine.Button_ViewOpen);
             }
 
             _Visible = true;
@@ -423,12 +399,10 @@ namespace GameLogic
             {
                 try
                 {
-                    // 检查是否已注册过相同监听器
                     if (_registeredListeners.TryGetValue(eventId, out var listeners))
                     {
                         if (listeners.Contains(listener))
                         {
-                            // Logger.Log($"[{Name}] 事件监听器已存在，跳过重复注册: {eventId}");
                             return;
                         }
                     }
@@ -441,15 +415,12 @@ namespace GameLogic
                     {
                         var queuedEvent = new QueuedEventListener(listener, eventId);
                         _eventMessageQueue.Enqueue(queuedEvent);
-                        //Logger.Log($"[{Name}] UI未加载完成，事件监听器已排队: {eventId}");
                     }
 
-                    // 创建包装监听器
                     Action<GameEventArgs> wrappedListener = (msg) =>
                     {
                         if (!IsLoadDone)
                         {
-                            // UI未加载完成时，缓存接收到的事件
                             lock (_eventLock)
                             {
                                 if (!_cachedEventMessages.TryGetValue(msg.Id, out var messageList))
@@ -471,12 +442,11 @@ namespace GameLogic
                             }
                             catch (Exception ex)
                             {
-                                Logger.Error($"[{Name}] 事件处理异常 {msg.Id}: {ex.Message}");
+                                Logger.Error($"[{Name}] 事件处理异常 {msg.Id}: {ex.Message}\n{ex.StackTrace}");
                             }
                         }
                     };
 
-                    // 保存包装监听器的引用映射
                     _wrappedListeners[listener] = wrappedListener;
 
                     LogicEventDispatcher.Instance.AddListener(eventId, wrappedListener);
@@ -484,13 +454,13 @@ namespace GameLogic
                 }
                 catch (Exception ex)
                 {
-                    Logger.Error($"[{Name}] 事件订阅失败 {eventId}: {ex.Message}");
+                    Logger.Error($"[{Name}] 事件订阅失败 {eventId}: {ex.Message}\n{ex.StackTrace}");
                 }
             }
         }
 
         /// <summary>
-        /// 取消订阅事件
+        /// 取消订阅事件。
         /// </summary>
         /// <param name="eventId">事件ID。</param>
         /// <param name="listener">事件监听回调。</param>
@@ -506,7 +476,6 @@ namespace GameLogic
             {
                 try
                 {
-                    // 从本地跟踪中移除
                     if (_registeredListeners.TryGetValue(eventId, out var listeners))
                     {
                         listeners.Remove(listener);
@@ -516,7 +485,6 @@ namespace GameLogic
                         }
                     }
 
-                    // 从LogicEventDispatcher中移除监听器
                     if (_wrappedListeners.TryGetValue(listener, out var wrappedListener))
                     {
                         LogicEventDispatcher.Instance.RemoveListener(eventId, wrappedListener);
@@ -524,13 +492,12 @@ namespace GameLogic
                     }
                     else
                     {
-                        // 如果没有包装监听器的记录，尝试直接移除原始监听器
                         LogicEventDispatcher.Instance.RemoveListener(eventId, listener);
                     }
                 }
                 catch (Exception ex)
                 {
-                    Logger.Error($"[{Name}] 取消订阅事件失败 {eventId}: {ex.Message}");
+                    Logger.Error($"[{Name}] 取消订阅事件失败 {eventId}: {ex.Message}\n{ex.StackTrace}");
                 }
             }
         }
@@ -555,7 +522,7 @@ namespace GameLogic
             }
             catch (Exception ex)
             {
-                Logger.Error($"[{Name}] 发送事件失败 {args.Id}: {ex.Message}");
+                Logger.Error($"[{Name}] 发送事件失败 {args.Id}: {ex.Message}\n{ex.StackTrace}");
             }
         }
 
@@ -568,7 +535,6 @@ namespace GameLogic
             {
                 try
                 {
-                    // 移除所有注册的事件监听器
                     foreach (var kvp in _registeredListeners)
                     {
                         string eventId = kvp.Key;
@@ -588,12 +554,11 @@ namespace GameLogic
                             }
                             catch (Exception ex)
                             {
-                                Logger.Error($"[{Name}] 移除事件监听器失败 {eventId}: {ex.Message}");
+                                Logger.Error($"[{Name}] 移除事件监听器失败 {eventId}: {ex.Message}\n{ex.StackTrace}");
                             }
                         }
                     }
 
-                    // 清空所有事件相关的数据结构
                     _registeredListeners.Clear();
                     _wrappedListeners.Clear();
                     _cachedEventMessages.Clear();
@@ -601,13 +566,13 @@ namespace GameLogic
                 }
                 catch (Exception ex)
                 {
-                    Logger.Error($"[{Name}] 移除所有UI事件失败: {ex.Message}");
+                    Logger.Error($"[{Name}] 移除所有UI事件失败: {ex.Message}\n{ex.StackTrace}");
                 }
             }
         }
 
         /// <summary>
-        /// 清空事件队列
+        /// 清空事件队列。
         /// </summary>
         private void ClearEventQueue()
         {
@@ -618,7 +583,7 @@ namespace GameLogic
         }
 
         /// <summary>
-        /// 执行队列中的事件监听器
+        /// 执行队列中的事件监听器。
         /// </summary>
         public void ExecuteEvents()
         {
@@ -630,7 +595,6 @@ namespace GameLogic
 
                 var processedListeners = new List<QueuedEventListener>();
 
-                // 1. 处理所有排队的监听器
                 while (_eventMessageQueue.Count > 0)
                 {
                     var queuedListener = _eventMessageQueue.Dequeue();
@@ -640,7 +604,6 @@ namespace GameLogic
                     }
                 }
 
-                // 2. 派发缓存的事件给处理过的监听器（同一 EventId 可能有多个监听器，需全部派发后再清理缓存）
                 foreach (var listenerInfo in processedListeners)
                 {
                     if (_cachedEventMessages.TryGetValue(listenerInfo.EventId, out var cachedMessages))
@@ -654,13 +617,13 @@ namespace GameLogic
                             }
                             catch (Exception ex)
                             {
-                                Logger.Error($"[{Name}] 重新派发事件失败: {listenerInfo.EventId}, 错误: {ex.Message}");
+                                Logger.Error(
+                                    $"[{Name}] 重新派发事件失败: {listenerInfo.EventId}, 错误: {ex.Message}\n{ex.StackTrace}");
                             }
                         }
                     }
                 }
 
-                // 3. 清理已处理事件ID的缓存（收集所有涉及的 EventId 后再统一清理）
                 var processedEventIds = new HashSet<string>();
                 foreach (var listenerInfo in processedListeners)
                 {
@@ -677,48 +640,47 @@ namespace GameLogic
         #endregion
 
         /// <summary>
-        /// 加载UI资源（同步加载）
+        /// 加载UI资源（同步加载）。
         /// </summary>
-        /// <param name="viewName">视图名称</param>
-        /// <param name="prepareCallback">准备完成回调</param>
-        /// <param name="args">用户数据参数</param>
+        /// <param name="viewName">视图名称。</param>
+        /// <param name="prepareCallback">准备完成回调。</param>
+        /// <param name="args">用户数据参数。</param>
         public void LoadUIView(string viewName, Action<UIViewLogic, GameObject> prepareCallback, object[] args)
         {
             InternalLoad(viewName, prepareCallback, args);
         }
 
         /// <summary>
-        /// 异步加载UI资源
+        /// 异步加载UI资源。
         /// </summary>
-        /// <param name="viewName">视图名称</param>
-        /// <param name="prepareCallback">准备完成回调</param>
-        /// <param name="args">用户数据参数</param>
+        /// <param name="viewName">视图名称。</param>
+        /// <param name="prepareCallback">准备完成回调。</param>
+        /// <param name="args">用户数据参数。</param>
         public void LoadUIViewAsync(string viewName, Action<UIViewLogic, GameObject> prepareCallback, object[] args)
         {
             InternalLoadAsync(viewName, prepareCallback, args);
         }
 
         /// <summary>
-        /// 协程加载UI资源
+        /// 协程加载UI资源。
         /// </summary>
-        /// <param name="viewName">视图名称</param>
-        /// <param name="prepareCallback">准备完成回调</param>
-        /// <param name="args">用户数据参数</param>
+        /// <param name="viewName">视图名称。</param>
+        /// <param name="prepareCallback">准备完成回调。</param>
+        /// <param name="args">用户数据参数。</param>
         public void LoadUIViewCoroutine(string viewName, Action<UIViewLogic, GameObject> prepareCallback, object[] args)
         {
             UIRoot.Instance.StartCoroutine(InternalLoadIE(viewName, prepareCallback, args));
         }
 
         /// <summary>
-        /// 加载UI资源-同步方法
+        /// 加载UI资源-同步方法。
         /// </summary>
-        /// <param name="viewName">视图名称</param>
-        /// <param name="prepareCallback">准备完成回调</param>
-        /// <param name="args">用户数据参数</param>
+        /// <param name="viewName">视图名称。</param>
+        /// <param name="prepareCallback">准备完成回调。</param>
+        /// <param name="args">用户数据参数。</param>
         public void InternalLoad(string viewName, Action<UIViewLogic, GameObject> prepareCallback,
             object[] args)
         {
-            // 参数验证
             if (string.IsNullOrEmpty(viewName))
             {
                 Logger.Error($"[{Name}] 同步加载UI资源失败: 视图名称不能为空");
@@ -729,7 +691,7 @@ namespace GameLogic
             _prepareCallback = prepareCallback;
             this.userDatas = args;
 
-            GameObject gameObject = Resources.Load<GameObject>("UI/View/" + viewName);
+            GameObject gameObject = Resources.Load<GameObject>(viewName);
 
             if (gameObject == null)
             {
@@ -742,77 +704,72 @@ namespace GameLogic
         }
 
         /// <summary>
-        /// 加载UI资源-异步方法
+        /// 加载UI资源-异步方法。
         /// </summary>
-        /// <param name="viewName">视图名称</param>
-        /// <param name="prepareCallback">准备完成回调</param>
-        /// <param name="args">用户数据参数</param>
+        /// <param name="viewName">界面名称。</param>
+        /// <param name="prepareCallback">准备完成回调。</param>
+        /// <param name="args">用户数据参数。</param>
         public async void InternalLoadAsync(string viewName, Action<UIViewLogic, GameObject> prepareCallback,
             object[] args)
         {
+            if (string.IsNullOrEmpty(viewName))
+            {
+                Logger.Error($"[{Name}] 异步加载UI资源失败: 界面名称不能为空");
+                return;
+            }
+
+            Name = viewName;
+            _prepareCallback = prepareCallback;
+            this.userDatas = args;
+
             try
             {
-                // 参数验证
-                if (string.IsNullOrEmpty(viewName))
+                DisposeLoadCancellationToken();
+                _loadCts = new CancellationTokenSource();
+
+                ResourceRequest request = Resources.LoadAsync<GameObject>(viewName);
+
+                await request.ToUniTask(cancellationToken: _loadCts.Token);
+
+                if (IsDestroyed)
                 {
-                    Logger.Error($"[{Name}] 异步加载UI资源失败: 视图名称不能为空");
+                    Logger.Warning($"[{Name}] UI在异步加载完成后已被销毁");
+                    Handle_Completed(null);
                     return;
                 }
 
-                Name = viewName;
-                _prepareCallback = prepareCallback;
-                this.userDatas = args;
+                GameObject gameObject = request.asset as GameObject;
 
-                try
+                if (gameObject == null)
                 {
-                    _loadCts?.Cancel();
-                    _loadCts?.Dispose();
-                    _loadCts = new CancellationTokenSource();
-
-                    ResourceRequest request = Resources.LoadAsync<GameObject>("UI/View/" + viewName);
-
-                    // 等待资源加载完成
-                    await request.ToUniTask(cancellationToken: _loadCts.Token);
-
-                    GameObject gameObject = request.asset as GameObject;
-
-                    if (gameObject == null)
-                    {
-                        Logger.Error($"[{Name}] 异步加载UI资源失败: 未找到资源 '{viewName}'");
-                        Handle_Completed(null);
-                        return;
-                    }
-
-                    Handle_Completed(gameObject);
-                }
-                catch (OperationCanceledException)
-                {
-                    // Destroy/切场景导致取消加载：不视为错误
+                    Logger.Error($"[{Name}] 异步加载UI资源失败: 未找到资源 '{viewName}'");
                     Handle_Completed(null);
+                    return;
                 }
-                catch (System.Exception ex)
-                {
-                    Logger.Error($"[{Name}] 异步加载UI资源时发生异常: {ex}");
-                    Handle_Completed(null);
-                }
+
+                Handle_Completed(gameObject);
             }
-            catch (Exception e)
+            catch (OperationCanceledException)
             {
-                Logger.Error(e.Message);
+                Handle_Completed(null);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"[{Name}] 异步加载UI资源时发生异常: {ex.Message}\n{ex.StackTrace}");
+                Handle_Completed(null);
             }
         }
 
         /// <summary>
-        /// 加载UI资源-协程
+        /// 加载UI资源-协程。
         /// </summary>
-        /// <param name="viewName">视图名称</param>
-        /// <param name="prepareCallback">准备完成回调</param>
-        /// <param name="args">用户数据参数</param>
+        /// <param name="viewName">视图名称。</param>
+        /// <param name="prepareCallback">准备完成回调。</param>
+        /// <param name="args">用户数据参数。</param>
         /// <returns></returns>
         public IEnumerator InternalLoadIE(string viewName, Action<UIViewLogic, GameObject> prepareCallback,
             object[] args)
         {
-            // 参数验证
             if (string.IsNullOrEmpty(viewName))
             {
                 Logger.Error($"[{Name}] 协程加载UI资源失败: 视图名称不能为空");
@@ -825,7 +782,6 @@ namespace GameLogic
 
             ResourceRequest request = Resources.LoadAsync<GameObject>(viewName);
 
-            // 等待资源加载完成
             while (!request.isDone)
             {
                 yield return null;
@@ -843,20 +799,21 @@ namespace GameLogic
             Handle_Completed(gameObject);
         }
 
+        /// <summary>
+        /// 处理加载完成的回调。
+        /// </summary>
+        /// <param name="panel">加载的游戏对象面板。</param>
         private void Handle_Completed(GameObject panel)
         {
+            IsLoadDone = true;
+
             if (panel == null)
             {
-                // 资源加载失败，但仍然设置加载完成标志，以便后续逻辑能正确处理错误状态
-                IsLoadDone = true;
                 Logger.Warning($"[{Name}] UI资源加载失败，无法创建界面");
-
-                // 即使面板为空也调用回调，允许上层逻辑处理错误情况
                 _prepareCallback?.Invoke(this, null);
                 return;
             }
 
-            IsLoadDone = true;
             if (IsDestroyed)
             {
                 Logger.Warning($"[{Name}] UI在加载完成前已被销毁");
@@ -864,6 +821,36 @@ namespace GameLogic
             }
 
             _prepareCallback?.Invoke(this, panel);
+        }
+
+        /// <summary>
+        /// 安全释放加载用的CancellationTokenSource。
+        /// </summary>
+        private void DisposeLoadCancellationToken()
+        {
+            if (_loadCts != null)
+            {
+                try
+                {
+                    if (!_loadCts.IsCancellationRequested)
+                    {
+                        _loadCts.Cancel();
+                    }
+
+                    _loadCts.Dispose();
+                }
+                catch (ObjectDisposedException)
+                {
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning($"[{Name}] 取消加载令牌时发生异常: {ex.Message}\n{ex.StackTrace}");
+                }
+                finally
+                {
+                    _loadCts = null;
+                }
+            }
         }
     }
 

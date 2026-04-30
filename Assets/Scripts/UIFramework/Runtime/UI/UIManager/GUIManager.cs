@@ -74,20 +74,6 @@ namespace GameLogic
 
         public bool canResponseShowExitGame = true;
 
-        /// <summary>
-        /// 从 Logic 类型获取界面名称（去掉 Logic 后缀）。
-        /// </summary>
-        private static string GetViewNameFromLogicType(Type logicType)
-        {
-            string viewName = logicType.Name;
-            if (viewName.EndsWith("Logic"))
-            {
-                viewName = viewName.Substring(0, viewName.Length - 5);
-            }
-
-            return viewName;
-        }
-
         #endregion
 
         #region 创建实例
@@ -144,24 +130,53 @@ namespace GameLogic
 
         private UIViewLogic CreateInstance(Type type)
         {
-            UIViewLogic view = Activator.CreateInstance(type) as UIViewLogic;
-            UIAttribute attribute = Attribute.GetCustomAttribute(type, typeof(UIAttribute)) as UIAttribute;
+            string logicTypeName = type.Name;
 
-            if (view == null)
-                throw new($"UIView {type.FullName} create instance failed.");
-
-            if (attribute != null)
+            if (!logicTypeName.EndsWith("Logic"))
             {
-                view.Init(attribute.Layer, attribute.CurStackMode, attribute.NeedUpdate,
-                    attribute.IsNoNotch, attribute.IsUseAdjust);
-            }
-            else
-            {
-                view.Init(ViewLayer.Layer1, ViewStack.FullOnly);
+                logicTypeName += "Logic";
             }
 
-            return view;
+            Type viewLogicType = TypeCacheManager.FindViewType(logicTypeName);
+
+            if (viewLogicType == null)
+            {
+                Logger.Error($"[GUIManager] 未找到界面Logic类型: {logicTypeName}");
+                throw new InvalidOperationException($"无法创建界面实例，未找到Logic类型: {logicTypeName}");
+            }
+
+            try
+            {
+                UIViewLogic view = Activator.CreateInstance(viewLogicType) as UIViewLogic;
+
+                if (view == null)
+                {
+                    Logger.Error($"[GUIManager] 创建Logic实例失败: {viewLogicType.FullName}");
+                    throw new InvalidOperationException($"UIView {viewLogicType.FullName} create instance failed.");
+                }
+
+                UIAttribute attribute = Attribute.GetCustomAttribute(viewLogicType, typeof(UIAttribute)) as UIAttribute;
+
+                if (attribute != null)
+                {
+                    view.Init(attribute.Layer, attribute.CurStackMode, attribute.NeedUpdate,
+                        attribute.IsNoNotch, attribute.IsUseAdjust);
+                }
+                else
+                {
+                    Logger.Warning($"[GUIManager] Logic类型 {viewLogicType.FullName} 缺少UIAttribute，使用默认配置");
+                    view.Init(ViewLayer.Layer1, ViewStack.FullOnly);
+                }
+
+                return view;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"[GUIManager] 创建Logic实例异常: {viewLogicType.FullName}, 错误: {ex.Message}");
+                throw;
+            }
         }
+
 
         /// <summary>
         /// 删除界面（内部方法）。
@@ -349,16 +364,13 @@ namespace GameLogic
         #region 公共接口
 
         /// <summary>
-        /// 显示界面（同步调用版本）。
-        /// 底层使用异步加载，但对外提供同步接口。
+        /// 加载UI
         /// </summary>
-        /// <typeparam name="T">界面Logic类型。</typeparam>
-        /// <param name="args">传递给界面的参数。</param>
-        /// <returns>界面Logic实例。</returns>
-        public void ShowView<T>(params object[] args) where T : UIViewLogic
+        /// <param name="viewName"></param>
+        /// <param name="args"></param>
+        public void ShowView(string viewName, params object[] args)
         {
-            string viewName = GetViewNameFromLogicType(typeof(T));
-            Debug.Log("开始加载界面：" + viewName);
+            Type type = TypeCacheManager.FindViewType(viewName);
             if (_loadingCache.ContainsKey(viewName))
             {
                 Logger.Warning($"GUIManager.ShowView: {viewName} 正在加载中，请勿重复调用！");
@@ -376,18 +388,79 @@ namespace GameLogic
             }
             else
             {
-                logic = CreateInstance(typeof(T));
-                if (logic == null)
+                try
                 {
-                    Logger.Error($"创建界面实例失败: {typeof(T).Name}");
-                    return;
+                    logic = CreateInstance(type);
+
+                    if (logic == null)
+                    {
+                        Logger.Error($"创建界面实例失败: {viewName}");
+                        return;
+                    }
+
+                    logic.Name = viewName;
+                    _loadingCache.Add(viewName, logic);
+                    logic.RegisterEvent();
+                    logic.LoadUIViewAsync(viewName, OnViewPrepare, args);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error($"显示界面失败 [{viewName}]: {ex.Message}\n{ex.StackTrace}");
+                    _loadingCache.Remove(viewName);
+                    throw;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 显示界面（同步调用版本）。
+        /// 底层使用异步加载，但对外提供同步接口。
+        /// </summary>
+        /// <typeparam name="T">界面Logic类型。</typeparam>
+        /// <param name="args">传递给界面的参数。</param>
+        /// <returns>界面Logic实例。</returns>
+        public void ShowView<T>(params object[] args) where T : UIView
+        {
+            string viewName = typeof(T).Name;
+            GameLogic.Logger.Log("开始加载界面：" + viewName);
+            if (_loadingCache.ContainsKey(viewName))
+            {
+                Logger.Warning($"GUIManager.ShowView: {viewName} 正在加载中，请勿重复调用！");
+                return;
+            }
+
+            if (viewList.TryGetValue(viewName, out var logic))
+            {
+                if (!logic.IsVisible())
+                {
+                    logic.Show(args);
                 }
 
-                logic.Name = viewName;
-                _loadingCache.Add(viewName, logic);
-                // 必须在 LoadUIView 之前注册事件，否则同步/快速加载时 OnViewPrepare 可能在 RegisterEvent 之前执行，导致 _cachedEventMessages 为空
                 logic.RegisterEvent();
-                logic.LoadUIViewAsync(viewName, OnViewPrepare, args);
+            }
+            else
+            {
+                try
+                {
+                    logic = CreateInstance(typeof(T));
+
+                    if (logic == null)
+                    {
+                        Logger.Error($"创建界面实例失败: {viewName}");
+                        return;
+                    }
+
+                    logic.Name = viewName;
+                    _loadingCache.Add(viewName, logic);
+                    logic.RegisterEvent();
+                    logic.LoadUIViewAsync(viewName, OnViewPrepare, args);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error($"显示界面失败 [{viewName}]: {ex.Message}\n{ex.StackTrace}");
+                    _loadingCache.Remove(viewName);
+                    throw;
+                }
             }
         }
 
@@ -437,7 +510,17 @@ namespace GameLogic
         /// <returns>是否正在加载界面</returns>
         public bool IsLoadingCache<T>()
         {
-            string viewName = GetViewNameFromLogicType(typeof(T));
+            string viewName = typeof(T).Name;
+            return _loadingCache.ContainsKey(viewName);
+        }
+
+        /// <summary>
+        /// 是否正在加载界面
+        /// </summary>
+        /// <param name="viewName">界面名称。</param>
+        /// <returns>是否正在加载界面</returns>
+        public bool IsLoadingCache(string viewName)
+        {
             return _loadingCache.ContainsKey(viewName);
         }
 
@@ -446,9 +529,9 @@ namespace GameLogic
         /// </summary>
         /// <typeparam name="T">界面Logic类型。</typeparam>
         /// <returns>界面Logic实例，不存在返回null。</returns>
-        public T GetView<T>() where T : UIViewLogic
+        public T GetView<T>() where T : UIView
         {
-            string viewName = GetViewNameFromLogicType(typeof(T));
+            string viewName = typeof(T).Name;
             viewList.TryGetValue(viewName, out UIViewLogic logic);
             return logic as T;
         }
@@ -457,9 +540,9 @@ namespace GameLogic
         /// 隐藏界面。
         /// </summary>
         /// <typeparam name="T">界面Logic类型。</typeparam>
-        public void HideView<T>() where T : UIViewLogic
+        public void HideView<T>() where T : UIView
         {
-            string viewName = GetViewNameFromLogicType(typeof(T));
+            string viewName = typeof(T).Name;
             if (!viewList.TryGetValue(viewName, out var logic)) return;
             if (logic != null && logic.IsVisible())
             {
@@ -588,9 +671,9 @@ namespace GameLogic
         /// </summary>
         /// <typeparam name="T">界面Logic类型。</typeparam>
         /// <param name="isAll">是否删除堆栈中所有该界面实例，默认false。</param>
-        public void DestroyView<T>(bool isAll = false) where T : UIViewLogic
+        public void DestroyView<T>(bool isAll = false) where T : UIView
         {
-            string viewName = GetViewNameFromLogicType(typeof(T));
+            string viewName = typeof(T).Name;
             DestroyViewInternal(viewName, isAll);
         }
 
@@ -693,9 +776,20 @@ namespace GameLogic
         /// </summary>
         /// <typeparam name="T">界面Logic类型。</typeparam>
         /// <returns>true表示显示，false表示未显示。</returns>
-        public bool IsViewVisible<T>() where T : UIViewLogic
+        public bool IsViewVisible<T>() where T : UIView
         {
-            string viewName = GetViewNameFromLogicType(typeof(T));
+            string viewName = typeof(T).Name;
+            if (!viewList.TryGetValue(viewName, out var logic)) return false;
+            return logic != null && logic.IsVisible();
+        }
+
+        /// <summary>
+        /// 获取界面是否在显示。
+        /// </summary>
+        /// <param name="viewName">界面名字</param>
+        /// <returns></returns>
+        public bool IsViewVisible(string viewName)
+        {
             if (!viewList.TryGetValue(viewName, out var logic)) return false;
             return logic != null && logic.IsVisible();
         }

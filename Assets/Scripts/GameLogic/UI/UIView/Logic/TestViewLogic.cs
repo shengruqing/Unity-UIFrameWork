@@ -22,7 +22,7 @@ namespace GameLogic
 
         private void OnSend()
         {
-            GUIManager.Instance.ShowView<Test2ViewLogic>();
+            GUIManager.Instance.ShowView<Test2View>();
             LogicEventDispatcher.Instance.Send(new UpdateUI() { str = value });
         }
 
